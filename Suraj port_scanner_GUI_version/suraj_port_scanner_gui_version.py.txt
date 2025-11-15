@@ -1,0 +1,145 @@
+#!/bin/python3
+#haha maile port scanner banaideko la 
+
+import socket    
+import threading
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+
+def resolve_target(target):
+    try:
+        # ======= URL CLEANING ======
+        if target.startswith("http://"):
+            target = target.replace("http://", "")
+        elif target.startswith("https://"):
+            target = target.replace("https://", "")
+
+        # Remove paths like /login/home
+        if "/" in target:
+            target = target.split("/")[0]
+
+        # Resolve final domain
+        return socket.gethostbyname(target)
+    except:
+        return None
+
+
+def scan_port(target_ip, port, open_ports, progress, total_ports, progress_var):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.5)
+
+    try:
+        result = s.connect_ex((target_ip, port))
+        if result == 0:
+            open_ports.append(port)
+            result_text.insert(tk.END, f"[OPEN] Port {port}\n", "open")
+        else:
+            result_text.insert(tk.END, f"[CLOSED] Port {port}\n", "closed")
+    except:
+        result_text.insert(tk.END, f"[FILTERED] Port {port}\n", "filtered")
+    finally:
+        s.close()
+
+    progress["value"] += 1
+    progress_var.set(f"Progress: {int((progress['value'] / total_ports) * 100)}%")
+
+
+def start_scan():
+    result_text.delete(1.0, tk.END)
+
+    target = target_entry.get().strip()
+    ports = port_entry.get().strip()
+
+    if not target or not ports:
+        messagebox.showerror("Error", "Please enter target and ports.")
+        return
+
+    target_ip = resolve_target(target)
+    if not target_ip:
+        messagebox.showerror("Error", "Invalid domain or IP.")
+        return
+
+    try:
+        start_port, end_port = map(int, ports.split("-"))
+    except:
+        messagebox.showerror("Error", "Port range must be like 1-1000")
+        return
+
+    total_ports = end_port - start_port + 1
+    open_ports = []
+
+    progress["value"] = 0
+    progress["maximum"] = total_ports
+
+    threads = []
+
+    for port in range(start_port, end_port + 1):
+        t = threading.Thread(
+            target=scan_port,
+            args=(target_ip, port, open_ports, progress, total_ports, progress_label_var)
+        )
+        threads.append(t)
+        t.start()
+
+    def finish():
+        for t in threads:
+            t.join()
+
+        if not open_ports:
+            result_text.insert(tk.END, "\n Sorry, I can't find any open ports.\n", "error")
+        else:
+            result_text.insert(tk.END, f"\n Scan complete. {len(open_ports)} open ports found.\n", "done")
+
+    threading.Thread(target=finish).start()
+
+
+
+# ========= GUI SETUP =========   
+
+
+root = tk.Tk()
+root.title("Suraj Port Scanner")
+root.geometry("600x500")
+root.configure(bg="#2b2b2b")
+
+style = ttk.Style()
+style.theme_use("clam")
+style.configure("TButton", foreground="white", background="#444")
+style.configure("TProgressbar", thickness=20)
+
+# Input fields
+tk.Label(root, text="Target Domain/IP:", bg="#2b2b2b", fg="white", font=("Arial", 12)).pack()
+target_entry = tk.Entry(root, font=("Arial", 12))
+target_entry.pack(pady=5)
+
+tk.Label(root, text="Port Range (e.g. 1-500):", bg="#2b2b2b", fg="white", font=("Arial", 12)).pack()
+port_entry = tk.Entry(root, font=("Arial", 12))
+port_entry.pack(pady=5)
+
+# Start button
+ttk.Button(root, text="Start Scan", command=start_scan).pack(pady=10)
+
+# Progress display
+progress_label_var = tk.StringVar(value="Progress: 0%")
+tk.Label(root, textvariable=progress_label_var, bg="#2b2b2b", fg="yellow", font=("Arial", 11)).pack()
+
+progress = ttk.Progressbar(root, length=400)
+progress.pack(pady=5)
+
+# Result box
+result_text = tk.Text(root, height=15, bg="#1e1e1e", fg="white", font=("Consolas", 11))
+result_text.pack(pady=10)
+
+# Color tags
+result_text.tag_configure("open", foreground="lightgreen")
+result_text.tag_configure("closed", foreground="orange")
+result_text.tag_configure("filtered", foreground="cyan")
+result_text.tag_configure("error", foreground="red")
+result_text.tag_configure("done", foreground="lightblue")
+
+root.mainloop()
+
+
+
+ 
